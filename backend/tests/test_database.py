@@ -71,10 +71,10 @@ def test_seed_is_idempotent():
     assert before["boards"] == 1
     assert before["classes"] == 1
     assert before["subjects"] == 1
-    assert before["chapters"] == 9
-    assert before["topics"] == 27
-    assert before["lessons"] == 27
-    assert before["practice_questions"] == 45
+    assert before["chapters"] == 10
+    assert before["topics"] == 32
+    assert before["lessons"] == 32
+    assert before["practice_questions"] == 51
 
     db = SessionLocal()
     try:
