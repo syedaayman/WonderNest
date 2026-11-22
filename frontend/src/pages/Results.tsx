@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError, api, type Quiz, type QuizResult } from "../lib/api";
+import { pick, useLanguage } from "../lib/i18n";
 
 const LETTERS = ["A", "B", "C", "D", "E"];
 
 export default function Results() {
   const { attemptId } = useParams();
   const id = Number(attemptId);
+  const { lang, t } = useLanguage();
   const [result, setResult] = useState<QuizResult | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,7 +48,7 @@ export default function Results() {
       <div className="container">
         <div className="loader">
           <div className="spinner" />
-          <span>Checking your answers…</span>
+          <span>{t("quiz.checking")}</span>
         </div>
       </div>
     );
@@ -59,7 +61,7 @@ export default function Results() {
           {error ?? "Result not found."}
         </div>
         <p>
-          <Link to="/progress">← Back to progress</Link>
+          <Link to="/progress">← {t("nav.progress")}</Link>
         </p>
       </div>
     );
@@ -73,16 +75,22 @@ export default function Results() {
         ? "Good effort. Review the explanations below and try again."
         : "Every attempt teaches you something. Read the explanations and give it another go.";
 
+  const chapterTitle = pick(lang, result.chapter_title_en, result.chapter_title_kn);
+
   function optionsFor(questionId: number): string[] {
-    return quiz?.questions.find((question) => question.id === questionId)?.options_kn ?? [];
+    const question = quiz?.questions.find((item) => item.id === questionId);
+    if (!question) return [];
+    return lang === "kn" ? question.options_kn : question.options_en.length
+      ? question.options_en
+      : question.options_kn;
   }
 
   return (
     <div className="container-narrow stack">
       <div className="crumb">
-        <Link to="/curriculum">Curriculum</Link>
-        <span>› {result.chapter_title_kn}</span>
-        <span>› Results</span>
+        <Link to="/curriculum">{t("nav.curriculum")}</Link>
+        <span>› {chapterTitle}</span>
+        <span>› {t("results.eyebrow")}</span>
       </div>
 
       <section className="card score-hero">
@@ -95,32 +103,38 @@ export default function Results() {
           </div>
         </div>
         <div>
-          <span className="eyebrow">Quiz result</span>
-          <h1 style={{ fontSize: "1.6rem", marginBottom: "0.3rem" }} className="kan">
-            {result.chapter_title_kn}
+          <span className="eyebrow">{t("results.eyebrow")}</span>
+          <h1
+            style={{ fontSize: "1.6rem", marginBottom: "0.3rem" }}
+            lang={lang === "kn" ? "kn" : "en"}
+            className={lang === "kn" ? "kan" : undefined}
+          >
+            {chapterTitle}
           </h1>
           <p style={{ marginBottom: "0.6rem" }}>{encouragement}</p>
-          <div className="row">
+          <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
             <Link className="btn btn-primary" to={`/quiz/${result.chapter_id}`}>
-              Try again
+              {t("results.tryAgain")}
             </Link>
             <Link className="btn btn-ghost" to="/progress">
-              View progress
+              {t("results.progress")}
             </Link>
             <Link
               className="btn btn-soft"
-              to={`/tutor?chapter=${result.chapter_id}&title=${encodeURIComponent(result.chapter_title_kn)}`}
+              to={`/tutor?chapter=${result.chapter_id}&title=${encodeURIComponent(chapterTitle)}`}
             >
-              ✦ Ask the tutor to explain
+              {t("results.askTutor")}
             </Link>
           </div>
         </div>
       </section>
 
-      <h2>Review</h2>
+      <h2>{t("results.review")}</h2>
       <div className="stack">
         {result.answers.map((answer, index) => {
           const options = optionsFor(answer.question_id);
+          const questionText = pick(lang, answer.question_en, answer.question_kn);
+          const explanation = pick(lang, answer.explanation_en, answer.explanation_kn);
           return (
             <article
               className={`card review ${answer.is_correct ? "review-ok" : "review-bad"}`}
@@ -131,12 +145,16 @@ export default function Results() {
                   <span className="chapter-number" style={{ flex: "0 0 auto" }}>
                     {index + 1}
                   </span>
-                  <h3 className="kan" style={{ marginBottom: 0 }} lang="kn">
-                    {answer.question_kn}
+                  <h3
+                    style={{ marginBottom: 0 }}
+                    lang={lang === "kn" ? "kn" : "en"}
+                    className={lang === "kn" ? "kan" : undefined}
+                  >
+                    {questionText}
                   </h3>
                 </div>
                 <span className={answer.is_correct ? "badge badge-ok" : "badge badge-bad"}>
-                  {answer.is_correct ? "Correct" : "Needs practice"}
+                  {answer.is_correct ? t("results.correct") : t("results.needsPractice")}
                 </span>
               </div>
 
@@ -145,30 +163,35 @@ export default function Results() {
                   <span className="option-letter">
                     {answer.selected_index === null ? "–" : LETTERS[answer.selected_index]}
                   </span>
-                  <span className="kan" lang="kn">
+                  <span lang={lang === "kn" ? "kn" : "en"}>
                     {answer.selected_index === null
-                      ? "Not answered"
-                      : options[answer.selected_index] ?? `Option ${LETTERS[answer.selected_index]}`}
+                      ? t("results.notAnswered")
+                      : options[answer.selected_index] ??
+                        `Option ${LETTERS[answer.selected_index]}`}
                   </span>
                   <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>
-                    Your answer
+                    {t("results.yourAnswer")}
                   </span>
                 </div>
                 <div className="option correct">
                   <span className="option-letter">{LETTERS[answer.correct_index]}</span>
-                  <span className="kan" lang="kn">
+                  <span lang={lang === "kn" ? "kn" : "en"}>
                     {options[answer.correct_index] ?? `Option ${LETTERS[answer.correct_index]}`}
                   </span>
                   <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>
-                    Correct answer
+                    {t("results.correctAnswer")}
                   </span>
                 </div>
               </div>
 
-              {answer.explanation_kn ? (
-                <p className="kan" lang="kn" style={{ margin: "0.8rem 0 0", fontSize: "0.92rem" }}>
-                  <strong>ವಿವರಣೆ: </strong>
-                  {answer.explanation_kn}
+              {explanation ? (
+                <p
+                  lang={lang === "kn" ? "kn" : "en"}
+                  className={lang === "kn" ? "kan" : undefined}
+                  style={{ margin: "0.8rem 0 0", fontSize: "0.92rem" }}
+                >
+                  <strong>{t("results.explanation")}: </strong>
+                  {explanation}
                 </p>
               ) : null}
             </article>
