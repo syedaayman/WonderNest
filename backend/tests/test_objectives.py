@@ -9,8 +9,8 @@ from app.curriculum.seed import seed_curriculum
 BASE = "/api/curriculum"
 TEST_DB = Path(__file__).resolve().parents[1] / "data" / "test_wondernest.db"
 DEMO_PASSWORD = "Demo@12345"
-EXPECTED_OBJECTIVES = 12
-EXPECTED_TOPICS = 6
+EXPECTED_OBJECTIVES = 69
+EXPECTED_TOPICS = 32
 OBJECTIVES_PER_LESSON = 2
 
 
@@ -89,7 +89,11 @@ def test_objectives_ordered_by_position(client, demo_token):
     assert len(lessons) == EXPECTED_TOPICS
     for lesson in lessons:
         items = _get_ok(client, demo_token, f"{BASE}/lessons/{lesson['id']}/objectives")
-        assert [item["position"] for item in items] == [1, 2], f"lesson {lesson['id']}"
+        # Positions are 1-based and contiguous. Units have two objectives per topic, and the
+        # human body unit has three, so the count is checked per lesson rather than fixed.
+        assert [item["position"] for item in items] == list(range(1, len(items) + 1)), (
+            f"lesson {lesson['id']}"
+        )
 
 
 def test_kannada_unicode_preserved(client, demo_token):

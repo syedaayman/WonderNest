@@ -43,7 +43,7 @@ def test_hierarchy_walk_and_relationships(client, demo_token):
     assert subject["class_id"] == class_8["id"]
 
     chapters = _get_ok(client, demo_token, f"{BASE}/subjects/{subject['id']}/chapters")
-    assert len(chapters) == 3
+    assert len(chapters) == 10
     numbers = [chapter["number"] for chapter in chapters]
     assert numbers == sorted(numbers)
 
@@ -51,7 +51,9 @@ def test_hierarchy_walk_and_relationships(client, demo_token):
         assert chapter["subject_id"] == subject["id"]
 
         topics = _get_ok(client, demo_token, f"{BASE}/chapters/{chapter['id']}/topics")
-        assert len(topics) >= 2
+        # The human body enrichment unit covers five organ-system topics; every other unit
+        # keeps the standard three.
+        assert len(topics) == (5 if chapter["number"] == 103 else 3)
 
         for topic in topics:
             assert topic["chapter_id"] == chapter["id"]
@@ -109,3 +111,19 @@ def test_inactive_board_is_hidden_and_its_classes_return_404(client, demo_token)
         board.is_active = True
         db.commit()
         db.close()
+
+
+def test_categories_returns_subject_groupings(client, demo_token):
+    """Regression: the category payload keys must match the CategoryOut schema."""
+    categories = _get_ok(client, demo_token, f"{BASE}/categories")
+    keys = [category["key"] for category in categories]
+    assert "biology" in keys and "physics" in keys and "chemistry" in keys
+    assert len(keys) == len(set(keys))
+    for category in categories:
+        assert category["label_en"].strip()
+        assert category["label_kn"].strip()
+        assert set(category) == {"key", "label_en", "label_kn"}
+
+
+def test_categories_requires_authentication(client):
+    assert client.get(f"{BASE}/categories").status_code == 401

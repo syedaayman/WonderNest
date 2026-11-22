@@ -1,22 +1,27 @@
 """Curriculum browsing endpoints: boards, classes, subjects, chapters, topics and lessons."""
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.models import Board, Chapter, ClassLevel, Lesson, Subject, Topic, User
+from app.curriculum import units as curriculum_units
+from app.models import Board, Chapter, ClassLevel, Lesson, PracticeQuestion, Subject, Topic, User
 from app.models.curriculum import LearningObjective
 from app.schemas.curriculum import (
     BoardOut,
+    CategoryOut,
+    ChapterContentOut,
     ChapterOut,
     ClassOut,
     KeyTermOut,
     LearningObjectiveOut,
     LessonOut,
     SubjectOut,
+    TopicDetailOut,
     TopicOut,
+    VideoOut,
 )
 
 router = APIRouter(prefix="/api/curriculum", tags=["curriculum"])
@@ -28,6 +33,7 @@ def _lesson_out(lesson: Lesson) -> LessonOut:
             kn=term.get("kn", ""),
             en=term.get("en", ""),
             meaning_kn=term.get("meaning_kn", ""),
+            meaning_en=term.get("meaning_en"),
         )
         for term in (lesson.key_terms or [])
     ]
@@ -35,10 +41,22 @@ def _lesson_out(lesson: Lesson) -> LessonOut:
         id=lesson.id,
         topic_id=lesson.topic_id,
         body_kn=lesson.body_kn,
+        body_en=lesson.body_en,
         key_terms=key_terms,
         example_kn=lesson.example_kn,
+        example_en=lesson.example_en,
         is_sample=lesson.is_sample,
         source_note=lesson.source_note,
+    )
+
+
+def _objective_out(objective: LearningObjective, lesson_id: int) -> LearningObjectiveOut:
+    return LearningObjectiveOut(
+        id=objective.id,
+        lesson_id=lesson_id,
+        position=objective.position,
+        text_kn=objective.text_kn,
+        text_en=objective.text_en,
     )
 
 
@@ -86,6 +104,21 @@ def list_subjects(
     )
 
 
+@router.get("/categories", response_model=list[CategoryOut])
+def list_categories(
+    _user: User = Depends(get_current_user),
+) -> list[CategoryOut]:
+    """The subject groupings the curriculum page renders, in display order."""
+    return [
+        CategoryOut(
+            key=category["code"],
+            label_en=category["title_en"],
+            label_kn=category["title_kn"],
+        )
+        for category in curriculum_units.CATEGORIES
+    ]
+
+
 @router.get("/subjects/{subject_id}/chapters", response_model=list[ChapterOut])
 def list_chapters(
     subject_id: int = Path(ge=1),
@@ -99,6 +132,73 @@ def list_chapters(
         db.scalars(
             select(Chapter).where(Chapter.subject_id == subject_id).order_by(Chapter.number)
         ).all()
+    )
+
+
+@router.get("/chapters/{chapter_id}/content", response_model=ChapterContentOut)
+def get_chapter_content(
+    chapter_id: int = Path(ge=1),
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChapterContentOut:
+    """One request with everything the chapter learning page needs.
+
+    Bilingual text is returned side by side so the client can switch language without a
+    round trip, and the page works offline of the language toggle.
+    """
+    chapter = db.scalar(select(Chapter).where(Chapter.id == chapter_id))
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found.")
+
+    topics = db.scalars(
+        select(Topic).where(Topic.chapter_id == chapter_id).order_by(Topic.order)
+    ).all()
+
+    topic_details: list[TopicDetailOut] = []
+    for topic in topics:
+        lesson = db.scalar(select(Lesson).where(Lesson.topic_id == topic.id))
+        objectives = db.scalars(
+            select(LearningObjective)
+            .where(LearningObjective.topic_id == topic.id)
+            .order_by(LearningObjective.position)
+        ).all()
+        topic_details.append(
+            TopicDetailOut(
+                id=topic.id,
+                order=topic.order,
+                title_en=topic.title_en,
+                title_kn=topic.title_kn,
+                objectives=[
+                    _objective_out(objective, lesson.id if lesson else 0)
+                    for objective in objectives
+                ],
+                lesson=_lesson_out(lesson) if lesson else None,
+            )
+        )
+
+    question_count = db.scalar(
+        select(func.count())
+        .select_from(PracticeQuestion)
+        .where(PracticeQuestion.chapter_id == chapter_id)
+    ) or 0
+
+    return ChapterContentOut(
+        chapter=ChapterOut.model_validate(chapter),
+        topics=topic_details,
+        notes_kn=list(chapter.notes_kn or []),
+        notes_en=list(chapter.notes_en or []),
+        videos=[
+            VideoOut(
+                title=video.get("title", ""),
+                language=video.get("language", "en"),
+                topic=video.get("topic", ""),
+                search_query=video.get("search_query", ""),
+                video_id=video.get("video_id"),
+            )
+            for video in (chapter.videos or [])
+        ],
+        visualizations=list(chapter.visualizations or []),
+        question_count=question_count,
     )
 
 
@@ -158,12 +258,4 @@ def list_lesson_objectives(
         .order_by(LearningObjective.position.asc())
     ).all()
     # Objectives belong to the topic; they are reported against this lesson, which is the topic's lesson.
-    return [
-        LearningObjectiveOut(
-            id=objective.id,
-            lesson_id=lesson.id,
-            position=objective.position,
-            text_kn=objective.text_kn,
-        )
-        for objective in objectives
-    ]
+    return [_objective_out(objective, lesson.id) for objective in objectives]

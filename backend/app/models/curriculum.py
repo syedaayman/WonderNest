@@ -2,7 +2,17 @@
 
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -64,6 +74,25 @@ class Chapter(Base):
     title_kn: Mapped[str] = mapped_column(String(300), nullable=False)
     title_en: Mapped[str] = mapped_column(String(300), nullable=False)
     summary_kn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Subject grouping used by the curriculum page: biology, physics or chemistry.
+    # Enrichment topics keep their own category so the UI can label them as extra material.
+    category: Mapped[str] = mapped_column(String(20), default="biology", nullable=False)
+    is_enrichment: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Keys of the interactive diagrams the Visualize tab can render for this chapter.
+    visualizations: Mapped[list[str]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
+    notes_kn: Mapped[list[str]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
+    notes_en: Mapped[list[str]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
+    # List of {"title", "language", "topic", "search_query", "video_id"?}
+    videos: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
     estimated_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     is_sample: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     source_note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -90,9 +119,11 @@ class Lesson(Base):
         Integer, ForeignKey("topics.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     body_kn: Mapped[str] = mapped_column(Text, nullable=False)
-    # List of {"kn": str, "en": str, "meaning_kn": str}
+    body_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # List of {"kn": str, "en": str, "meaning_kn": str, "meaning_en": str}
     key_terms: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     example_kn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    example_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_sample: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     source_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -114,10 +145,15 @@ class PracticeQuestion(Base):
     )
     question_type: Mapped[str] = mapped_column(String(20), nullable=False)
     question_kn: Mapped[str] = mapped_column(Text, nullable=False)
+    question_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     # List of option strings
     options_kn: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    options_en: Mapped[list[str]] = mapped_column(
+        JSON, default=list, server_default=text("'[]'"), nullable=False
+    )
     correct_index: Mapped[int] = mapped_column(Integer, nullable=False)
     explanation_kn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    explanation_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     difficulty: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
@@ -133,4 +169,5 @@ class LearningObjective(Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     text_kn: Mapped[str] = mapped_column(Text, nullable=False)
+    text_en: Mapped[str | None] = mapped_column(Text, nullable=True)
 

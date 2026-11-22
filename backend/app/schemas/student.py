@@ -1,8 +1,9 @@
 """Response schemas for student profile, progress and preference endpoints."""
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StudentProfileOut(BaseModel):
@@ -29,6 +30,13 @@ class LessonProgressOut(BaseModel):
     opened_at: datetime
     completed_at: datetime | None
     time_spent_seconds: int
+
+
+class LessonProgressIn(BaseModel):
+    """Body for recording lesson progress. The student id always comes from the token."""
+
+    status: Literal["opened", "completed"] = "completed"
+    time_spent_seconds: int = Field(default=0, ge=0, le=36_000)
 
 
 class QuizAttemptOut(BaseModel):

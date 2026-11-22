@@ -1,13 +1,19 @@
-fastapi
-uvicorn[standard]
-pydantic>=2
-pydantic-settings
-sqlalchemy>=2
-alembic
-pyjwt
-bcrypt
-python-multipart
-httpx
-pytest
-anyio
-email-validator
+# WonderNest backend runtime dependencies (pinned to the versions used by the test suite).
+# Test tooling lives in requirements-dev.txt so the runtime image never ships pytest.
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+pydantic==2.13.3
+pydantic-settings==2.16.3
+SQLAlchemy==2.1.9
+alembic==1.20.1
+PyJWT==2.15.1
+bcrypt==5.0.0
+python-multipart==0.0.34
+httpx==0.28.1
+anyio==4.14.2
+email-validator==2.4.0
+
+# Google Gemini SDK for the AI tutor (the key is read from GEMINI_API_KEY only).
+# Pinned to an exact version: a major-only pin ("==3") is not resolvable by
+# dependency scanners and lets builds drift between revisions.
+google-genai==3.6.1
