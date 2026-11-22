@@ -15,10 +15,20 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_MINUTES: int = 30
     REFRESH_TOKEN_DAYS: int = 14
 
-    AI_PROVIDER: str = "demo"
-    AI_API_KEY: str = ""
-    AI_MODEL: str = ""
-    AI_BASE_URL: str = ""
+    # --- AI tutor (Google Gemini) -------------------------------------------------
+    # The key is read from the backend environment only and is never sent to the browser.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_TIMEOUT_SECONDS: float = 30.0
+    GEMINI_MAX_OUTPUT_TOKENS: int = 1024
+
+    # Per-student request budget for the tutor endpoint.
+    AI_RATE_LIMIT_REQUESTS: int = 12
+    AI_RATE_LIMIT_WINDOW_SECONDS: int = 60
+
+    # Conversation context handling.
+    AI_MAX_HISTORY_MESSAGES: int = 12
+    AI_MAX_MESSAGE_CHARS: int = 1200
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
