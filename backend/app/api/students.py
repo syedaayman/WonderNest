@@ -1,14 +1,25 @@
 """Student endpoints: own profile, progress and preferences. Identity always comes from the token."""
 
-from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.core.database import get_db
-from app.models import Board, ClassLevel, LessonProgress, QuizAttempt, User, UserPreference
+from app.models import (
+    Board,
+    ClassLevel,
+    Lesson,
+    LessonProgress,
+    QuizAttempt,
+    User,
+    UserPreference,
+)
 from app.repositories import user_repository
 from app.schemas.student import (
+    LessonProgressIn,
     LessonProgressOut,
     PreferenceOut,
     ProgressOut,
@@ -86,6 +97,48 @@ def get_my_progress(
         lesson_progress=lesson_progress,
         quiz_attempts_list=quiz_attempts_list,
     )
+
+
+@router.post(
+    "/lessons/{lesson_id}/progress",
+    response_model=LessonProgressOut,
+    status_code=status.HTTP_200_OK,
+)
+def record_lesson_progress(
+    body: LessonProgressIn,
+    lesson_id: int = Path(ge=1),
+    user: User = Depends(require_roles("student")),
+    db: Session = Depends(get_db),
+) -> LessonProgress:
+    """Mark a lesson as opened or completed for the signed-in student."""
+    if db.get(Lesson, lesson_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found.")
+
+    now = datetime.now(timezone.utc)
+    progress = db.scalar(
+        select(LessonProgress).where(
+            LessonProgress.user_id == user.id, LessonProgress.lesson_id == lesson_id
+        )
+    )
+    if progress is None:
+        progress = LessonProgress(
+            user_id=user.id,
+            lesson_id=lesson_id,
+            status=body.status,
+            opened_at=now,
+            completed_at=now if body.status == "completed" else None,
+            time_spent_seconds=body.time_spent_seconds,
+        )
+        db.add(progress)
+    else:
+        progress.time_spent_seconds = max(progress.time_spent_seconds, body.time_spent_seconds)
+        if body.status == "completed" and progress.status != "completed":
+            progress.status = "completed"
+            progress.completed_at = now
+
+    db.commit()
+    db.refresh(progress)
+    return progress
 
 
 @router.get("/preferences", response_model=list[PreferenceOut])
