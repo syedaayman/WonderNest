@@ -54,6 +54,19 @@ npm install
 npm run dev                   # http://localhost:5173, proxies /api to :8000
 ```
 
+## Dependency pinning
+
+`backend/requirements.txt` holds the exact top-level runtime pins. `backend/requirements.lock.txt`
+is the fully resolved tree (including transitive packages such as starlette, cryptography and
+urllib3) generated from the resolver output, so installs are reproducible and the whole tree can
+be audited for known vulnerabilities. Regenerate it whenever `requirements.txt` changes:
+
+```bash
+cd backend
+pip install --dry-run --ignore-installed --report report.json -r requirements.txt
+jq -r '.install[] | "\(.metadata.name)==\(.metadata.version)"' report.json | sort -f
+```
+
 ## Environment variables
 
 | Name | Required | Purpose |

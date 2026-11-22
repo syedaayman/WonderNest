@@ -1,3 +1,8 @@
-# Development and test tooling. Not installed in the deployed runtime image.
--r requirements.txt
+# Development and test tooling only. Not installed in the deployed runtime image.
+#
+# Runtime dependencies are pinned in requirements.txt (fully resolved tree in
+# requirements.lock.txt). This file is intentionally free of "-r" includes and
+# unpinned ranges so dependency auditing can resolve every entry.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
 pytest==9.0.3
