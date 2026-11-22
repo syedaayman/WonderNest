@@ -1455,15 +1455,13 @@ body { background: var(--bg); }
 @keyframes pulseDot { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.25); opacity: 1; } }
 @keyframes spinSlow { to { transform: rotate(360deg); } }
 @keyframes swayX { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
-.float-a, .float-b, .float-c, .atom-orbit, .molecule { animation: floatSoft 6s ease-in-out infinite; }
-.float-b { animation-duration: 8s; animation-delay: .7s; }
-.float-c { animation-duration: 10s; animation-delay: 1.2s; }
-.atom-orbit { animation: spinSlow 18s linear infinite; transform-origin: center; }
-.molecule { animation: swayX 7s ease-in-out infinite; }
-.bubble, .bubble-2, .bubble-3 { animation: bubbleUp 4s ease-in-out infinite; }
-.bubble-2 { animation-duration: 5.2s; animation-delay: .9s; }
-.bubble-3 { animation-duration: 6.4s; animation-delay: 1.7s; }
-.glow { animation: pulseDot 3.4s ease-in-out infinite; }
+.wn-float, .wn-float-slow { animation: floatSoft 6s ease-in-out infinite; }
+.wn-float-slow { animation-duration: 9s; animation-delay: .8s; }
+.wn-bubble { animation: bubbleUp 4s ease-in-out infinite; }
+.wn-bubble-2 { animation-duration: 5.2s; animation-delay: .9s; }
+.wn-bubble-3 { animation-duration: 6.4s; animation-delay: 1.7s; }
+.mascot-eye { animation: pulseDot 4.5s ease-in-out infinite; }
+.mascot-arm { animation: swayX 5s ease-in-out infinite; transform-origin: center; }
 
 /* ---- Kannada typography ---- */
 :lang(kn) .hero-title,
@@ -1496,7 +1494,7 @@ body { background: var(--bg); }
   body { overflow-x: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .float-a, .float-b, .float-c, .atom-orbit, .molecule, .bubble, .bubble-2, .bubble-3, .glow, .gemini-dot, .skeleton { animation: none !important; }
+  .wn-float, .wn-float-slow, .wn-bubble, .wn-bubble-2, .wn-bubble-3, .mascot-eye, .mascot-arm, .gemini-dot, .skeleton { animation: none !important; }
   .bar > span, .subject-card, .continue-card, .btn, .action-chip { transition: none; }
 }
 .category-block { scroll-margin-top: 96px; }
