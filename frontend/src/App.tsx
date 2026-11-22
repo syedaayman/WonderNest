@@ -13,6 +13,7 @@ import ProgressPage from "./pages/Progress";
 import QuizPage from "./pages/Quiz";
 import Results from "./pages/Results";
 import Tutor from "./pages/Tutor";
+import { TutorFab } from "./components/TutorFab";
 
 function FullPageLoader({ label = "Loading WonderNest…" }: { label?: string }) {
   return (
@@ -113,6 +114,7 @@ function Shell() {
           </span>
         </div>
       </footer>
+          <TutorFab />
     </>
   );
 }
