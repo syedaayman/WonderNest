@@ -46,11 +46,12 @@ class TutorError(Exception):
     status_code = 500
     code = "ai_error"
     default_message = "The AI tutor is unavailable right now. Please try again."
+    default_retry_after: int | None = None
 
     def __init__(self, message: str | None = None, *, retry_after: int | None = None) -> None:
         super().__init__(message or self.default_message)
         self.message = message or self.default_message
-        self.retry_after = retry_after
+        self.retry_after = retry_after if retry_after is not None else self.default_retry_after
 
 
 class AINotConfiguredError(TutorError):
@@ -75,12 +76,14 @@ class AIRateLimitedError(TutorError):
     status_code = 429
     code = "ai_rate_limited"
     default_message = "You are asking questions very quickly. Please wait a moment and try again."
+    default_retry_after = 20
 
 
 class AIQuotaExceededError(TutorError):
     status_code = 429
     code = "ai_quota_exceeded"
     default_message = "The AI tutor has reached its usage limit for now. Please try again later."
+    default_retry_after = 60
 
 
 class AITimeoutError(TutorError):
