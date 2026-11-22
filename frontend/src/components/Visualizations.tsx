@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 
 import { pick, useLanguage, type Lang } from "../lib/i18n";
+import type { ReactElement } from "react";
 
 interface DiagramProps {
   lang: Lang;
@@ -855,7 +856,7 @@ export interface VisualizationEntry {
   title_kn: string;
   caption_en: string;
   caption_kn: string;
-  Component: (props: DiagramProps) => JSX.Element;
+  Component: (props: DiagramProps) => ReactElement;
 }
 
 export const VISUALIZATIONS: Record<string, VisualizationEntry> = {

@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 // In development the SPA runs on :5173 and proxies /api to the FastAPI server.
 // In production FastAPI serves the built files, so relative /api calls just work.
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
+  const env = loadEnv(mode, ".", "");
   return {
     plugins: [react()],
     server: {
