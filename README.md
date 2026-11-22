@@ -67,23 +67,6 @@ pip install --dry-run --ignore-installed --report report.json -r requirements.tx
 jq -r '.install[] | "\(.metadata.name)==\(.metadata.version)"' report.json | sort -f
 ```
 
-## Environment variables
-
-| Name | Required | Purpose |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | yes for the tutor | Google AI Studio key; backend only |
-| `GEMINI_MODEL` | no | Default `gemini-3.8-flash` |
-| `GEMINI_TIMEOUT_SECONDS` | no | Provider timeout (default 30) |
-| `GEMINI_MAX_OUTPUT_TOKENS` | no | Response cap (default 1024) |
-| `AI_RATE_LIMIT_REQUESTS` / `AI_RATE_LIMIT_WINDOW_SECONDS` | no | Per-student budget (12 / 60) |
-| `AI_MAX_HISTORY_MESSAGES` / `AI_MAX_MESSAGE_CHARS` | no | Context and input limits (12 / 1200) |
-| `JWT_SECRET` | yes in production | Token signing key (≥32 chars) |
-| `DATABASE_URL` | no | Defaults to SQLite at `data/wondernest.db` |
-| `DEMO_PASSWORD` | no | Password for the seeded demo student |
-| `CORS_ORIGINS` | no | Only needed for a separate frontend origin |
-
-Locally: put them in `backend/.env`. On AppJet: **Settings → Environment variables**
-(`GEMINI_API_KEY`, `JWT_SECRET`). Never commit real values — `.env` is git-ignored.
 
 ## Deploying
 
