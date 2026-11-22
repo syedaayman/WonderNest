@@ -6,9 +6,11 @@
 FROM node:24-alpine AS frontend
 
 WORKDIR /build/frontend
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
-COPY frontend/ ./
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+# Copy sources explicitly: the workspace node_modules must never enter the build context.
+COPY frontend/index.html frontend/tsconfig.json frontend/vite.config.ts ./
+COPY frontend/src ./src
 RUN npm run build
 
 # ---------- Stage 2: python runtime ----------
@@ -26,7 +28,10 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ ./
+COPY backend/app ./app
+COPY backend/migrations ./migrations
+COPY backend/alembic.ini backend/pytest.ini ./
+COPY backend/scripts ./scripts
 # main.py resolves the SPA from <repo root>/frontend/dist, which is /frontend/dist here.
 COPY --from=frontend /build/frontend/dist /frontend/dist
 
