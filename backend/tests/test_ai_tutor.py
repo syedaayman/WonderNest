@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import AIConversation, AIMessage, Chapter, Lesson
+from app.models import AIConversation, AIMessage, Chapter, Lesson, Topic
 from app.services import ai_tutor_service
 from app.services.ai_tutor_service import TutorReply
 
@@ -76,19 +76,10 @@ def _lesson_context() -> dict[str, int]:
             .limit(1)
         ).first()
         assert row is not None, "seed data must contain a lesson with a Kannada body"
-        topic = db.execute(
-            select(Chapter.id).join(
-                Chapter.__table__.metadata.tables["topics"],
-                Chapter.id == Chapter.__table__.metadata.tables["topics"].c.chapter_id,
-            ).limit(0)
-        ) if False else None
         chapter_id = db.scalar(
             select(Chapter.id)
-            .join(
-                Chapter.__table__.metadata.tables["topics"],
-                Chapter.id == Chapter.__table__.metadata.tables["topics"].c.chapter_id,
-            )
-            .where(Chapter.__table__.metadata.tables["topics"].c.id == row.topic_id)
+            .join(Topic, Topic.chapter_id == Chapter.id)
+            .where(Topic.id == row.topic_id)
         )
         return {"lesson_id": row.id, "topic_id": row.topic_id, "chapter_id": chapter_id}
     finally:
