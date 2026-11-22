@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # The key is read from the backend environment only and is never sent to the browser.
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.8-flash"
+    # Tried in order when the primary model is missing or temporarily overloaded (503).
+    GEMINI_FALLBACK_MODELS: str = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.1-flash-lite"
     GEMINI_TIMEOUT_SECONDS: float = 30.0
     GEMINI_MAX_OUTPUT_TOKENS: int = 1024
 

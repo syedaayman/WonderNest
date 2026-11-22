@@ -29,11 +29,12 @@ logger = logging.getLogger("wondernest.ai")
 
 PROVIDER = "google-gemini"
 
-# Tried in order when the configured model is not available for the account.
+# Tried in order when the configured model is missing for this key or is temporarily
+# overloaded (Gemini answers 503 UNAVAILABLE during demand spikes).
 FALLBACK_FLASH_MODELS: tuple[str, ...] = (
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-flash-latest",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
 )
 
 
@@ -375,6 +376,18 @@ def _is_model_not_found(exc: Exception) -> bool:
     return _error_code(exc) == 404
 
 
+def _is_transient(exc: Exception) -> bool:
+    """Provider-side failure that another model can probably serve right away."""
+    return _error_code(exc) in (500, 502, 503, 504)
+
+
+def fallback_models() -> list[str]:
+    """Models to try after the configured one, from settings or the built-in chain."""
+    raw = get_settings().GEMINI_FALLBACK_MODELS
+    names = [part.strip() for part in raw.split(",") if part.strip()]
+    return names or list(FALLBACK_FLASH_MODELS)
+
+
 def translate_client_error(exc: Exception) -> TutorError:
     """Map a google-genai client error to a tutor error without leaking provider details."""
     code = _error_code(exc)
@@ -418,8 +431,9 @@ async def _generate(
     requested = configured_model()
     resolved = _model_cache.get(requested)
     candidates = [resolved or requested]
-    if resolved is None:
-        candidates.extend(model for model in FALLBACK_FLASH_MODELS if model != requested)
+    for model in fallback_models():
+        if model not in candidates:
+            candidates.append(model)
 
     last_error: Exception | None = None
     for index, model in enumerate(candidates):
@@ -439,7 +453,15 @@ async def _generate(
                         candidates.append(name)
             continue
         except genai_errors.ServerError as exc:
-            raise AIProviderError() from exc
+            last_error = exc
+            if not _is_transient(exc):
+                raise AIProviderError() from exc
+            logger.warning(
+                "Gemini model busy, trying next candidate model=%s code=%s",
+                model,
+                _error_code(exc),
+            )
+            continue
         except (asyncio.TimeoutError, TimeoutError) as exc:
             raise AITimeoutError() from exc
         except Exception as exc:  # network/DNS/TLS failures surface here
