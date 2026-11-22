@@ -109,3 +109,19 @@ def test_inactive_board_is_hidden_and_its_classes_return_404(client, demo_token)
         board.is_active = True
         db.commit()
         db.close()
+
+
+def test_categories_returns_subject_groupings(client, demo_token):
+    """Regression: the category payload keys must match the CategoryOut schema."""
+    categories = _get_ok(client, demo_token, f"{BASE}/categories")
+    keys = [category["key"] for category in categories]
+    assert "biology" in keys and "physics" in keys and "chemistry" in keys
+    assert len(keys) == len(set(keys))
+    for category in categories:
+        assert category["label_en"].strip()
+        assert category["label_kn"].strip()
+        assert set(category) == {"key", "label_en", "label_kn"}
+
+
+def test_categories_requires_authentication(client):
+    assert client.get(f"{BASE}/categories").status_code == 401
