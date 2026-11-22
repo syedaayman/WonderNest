@@ -1,4 +1,8 @@
-"""Request and response schemas for chapter quizzes and results."""
+"""Request and response schemas for chapter quizzes and results.
+
+Every question and explanation is returned in both languages so the student can switch
+language mid-quiz without losing their place.
+"""
 
 from datetime import datetime
 
@@ -11,7 +15,9 @@ class QuizQuestionOut(BaseModel):
     id: int
     question_type: str
     question_kn: str
+    question_en: str | None
     options_kn: list[str]
+    options_en: list[str]
     difficulty: int
 
 
@@ -19,6 +25,7 @@ class QuizOut(BaseModel):
     chapter_id: int
     chapter_title_kn: str
     chapter_title_en: str
+    category: str
     total: int
     questions: list[QuizQuestionOut]
 
@@ -38,13 +45,18 @@ class QuizAnswerResultOut(BaseModel):
     correct_index: int
     is_correct: bool
     explanation_kn: str | None
+    explanation_en: str | None
     question_kn: str
+    question_en: str | None
+    options_kn: list[str]
+    options_en: list[str]
 
 
 class QuizResultOut(BaseModel):
     attempt_id: int
     chapter_id: int
     chapter_title_kn: str
+    chapter_title_en: str
     score: int
     total: int
     created_at: datetime
