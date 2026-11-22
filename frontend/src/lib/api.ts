@@ -149,9 +149,46 @@ export interface Chapter {
   title_en: string;
   title_kn: string;
   summary_kn: string | null;
+  summary_en: string | null;
+  category: string;
+  is_enrichment: boolean;
+  visualizations: string[];
   estimated_minutes: number;
   is_sample: boolean;
   source_note: string | null;
+}
+
+export interface Category {
+  key: string;
+  label_en: string;
+  label_kn: string;
+}
+
+export interface VideoItem {
+  title: string;
+  language: string;
+  topic: string;
+  search_query: string;
+  video_id: string | null;
+}
+
+export interface TopicDetail {
+  id: number;
+  order: number;
+  title_en: string;
+  title_kn: string;
+  objectives: Objective[];
+  lesson: Lesson | null;
+}
+
+export interface ChapterContent {
+  chapter: Chapter;
+  topics: TopicDetail[];
+  notes_kn: string[];
+  notes_en: string[];
+  videos: VideoItem[];
+  visualizations: string[];
+  question_count: number;
 }
 
 export interface Topic {
@@ -166,14 +203,17 @@ export interface KeyTerm {
   kn: string;
   en: string;
   meaning_kn: string;
+  meaning_en: string | null;
 }
 
 export interface Lesson {
   id: number;
   topic_id: number;
   body_kn: string;
+  body_en: string | null;
   key_terms: KeyTerm[];
   example_kn: string | null;
+  example_en: string | null;
   is_sample: boolean;
   source_note: string | null;
 }
@@ -183,6 +223,7 @@ export interface Objective {
   lesson_id: number;
   position: number;
   text_kn: string;
+  text_en: string | null;
 }
 
 export interface LessonProgressRow {
@@ -211,7 +252,9 @@ export interface QuizQuestion {
   id: number;
   question_type: string;
   question_kn: string;
+  question_en: string | null;
   options_kn: string[];
+  options_en: string[];
   difficulty: number;
 }
 
@@ -219,6 +262,7 @@ export interface Quiz {
   chapter_id: number;
   chapter_title_kn: string;
   chapter_title_en: string;
+  category: string;
   total: number;
   questions: QuizQuestion[];
 }
@@ -229,17 +273,27 @@ export interface QuizAnswerResult {
   correct_index: number;
   is_correct: boolean;
   explanation_kn: string | null;
+  explanation_en: string | null;
   question_kn: string;
+  question_en: string | null;
+  options_kn: string[];
+  options_en: string[];
 }
 
 export interface QuizResult {
   attempt_id: number;
   chapter_id: number;
   chapter_title_kn: string;
+  chapter_title_en: string;
   score: number;
   total: number;
   created_at: string;
   answers: QuizAnswerResult[];
+}
+
+export interface TranscribeResponse {
+  text: string;
+  model: string;
 }
 
 export interface TutorStatus {
@@ -309,6 +363,9 @@ export const api = {
     request<Subject[]>(`/api/curriculum/classes/${classId}/subjects`),
   chapters: (subjectId: number) =>
     request<Chapter[]>(`/api/curriculum/subjects/${subjectId}/chapters`),
+  categories: () => request<Category[]>("/api/curriculum/categories"),
+  chapterContent: (chapterId: number) =>
+    request<ChapterContent>(`/api/curriculum/chapters/${chapterId}/content`),
   topics: (chapterId: number) => request<Topic[]>(`/api/curriculum/chapters/${chapterId}/topics`),
   lessons: (topicId: number) => request<Lesson[]>(`/api/curriculum/topics/${topicId}/lessons`),
   lesson: (lessonId: number) => request<Lesson>(`/api/curriculum/lessons/${lessonId}`),
@@ -326,6 +383,11 @@ export const api = {
     request<{ prompts: SuggestedPrompt[] }>("/api/ai/tutor/suggestions"),
   tutorChat: (body: TutorChatRequest) =>
     request<TutorChatResponse>("/api/ai/tutor/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  transcribeVoice: (body: { audio_base64: string; mime_type: string; language: "kn" | "en" }) =>
+    request<TranscribeResponse>("/api/ai/tutor/transcribe", {
       method: "POST",
       body: JSON.stringify(body),
     }),
