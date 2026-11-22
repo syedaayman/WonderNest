@@ -1,56 +1,90 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
-import {
-  ApiError,
-  api,
-  type Chapter,
-  type ClassLevel,
-  type Lesson,
-  type Subject,
-  type Topic,
-} from "../lib/api";
+import { api, type Chapter, type Category, type Progress } from "../lib/api";
+import { pick, useLanguage } from "../lib/i18n";
+
+const CATEGORY_ORDER = ["biology", "physics", "chemistry", "enrichment"];
+
+const CATEGORY_THEME: Record<string, { icon: string; accent: string }> = {
+  biology: { icon: "🌿", accent: "var(--cat-bio)" },
+  physics: { icon: "⚡", accent: "var(--cat-phys)" },
+  chemistry: { icon: "⚗️", accent: "var(--cat-chem)" },
+  enrichment: { icon: "✨", accent: "var(--cat-enrich)" },
+};
+
+const VISUAL_ICON: Record<string, string> = {
+  photosynthesis: "🍃",
+  brain: "🧠",
+  microorganisms: "🦠",
+  electricity: "🔌",
+  forces: "🧲",
+  matter: "🧊",
+  light: "🔍",
+};
+
+function chapterIcon(chapter: Chapter): string {
+  for (const key of chapter.visualizations) {
+    if (VISUAL_ICON[key]) return VISUAL_ICON[key];
+  }
+  return CATEGORY_THEME[chapter.category]?.icon ?? "📘";
+}
+
+interface ChapterStat {
+  best: number;
+  total: number;
+  attempts: number;
+}
 
 export default function Curriculum() {
-  const location = useLocation();
-  const [classes, setClasses] = useState<ClassLevel[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const { lang, t } = useLanguage();
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [classId, setClassId] = useState<number | null>(null);
-  const [subjectId, setSubjectId] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [topics, setTopics] = useState<Record<number, Topic[]>>({});
-  const [lessons, setLessons] = useState<Record<number, Lesson[]>>({});
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [subjectId, setSubjectId] = useState<number | null>(null);
 
-  // Initial load: board -> class -> subject -> chapters.
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const boards = await api.boards();
-        if (!boards.length) throw new ApiError("No boards available.", 404);
-        const classList = await api.classes(boards[0].id);
-        if (!classList.length) throw new ApiError("No classes available.", 404);
-        const subjectList = await api.subjects(classList[0].id);
+        const [boardList, categoryList, progressData] = await Promise.all([
+          api.boards(),
+          api.categories().catch(() => [] as Category[]),
+          api.progress().catch(() => null),
+        ]);
         if (!active) return;
-        setClasses(classList);
-        setClassId(classList[0].id);
-        setSubjects(subjectList);
-        if (subjectList.length) {
-          setSubjectId(subjectList[0].id);
-          const chapterList = await api.chapters(subjectList[0].id);
-          if (active) setChapters(chapterList);
+        setCategories(categoryList);
+        setProgress(progressData);
+
+        let resolvedSubject: number | null = null;
+        for (const board of boardList) {
+          const classes = await api.classes(board.id);
+          if (!classes.length) continue;
+          const subjects = await api.subjects(classes[0].id);
+          const science = subjects.find((s) => /sci/i.test(s.code) || /ವಿಜ್ಞಾನ/.test(s.title_kn));
+          if (science) {
+            resolvedSubject = science.id;
+            break;
+          }
+          if (subjects[0]) {
+            resolvedSubject = subjects[0].id;
+            break;
+          }
         }
+        if (!active) return;
+        if (!resolvedSubject) {
+          setChapters([]);
+          return;
+        }
+        setSubjectId(resolvedSubject);
+        const chapterList = await api.chapters(resolvedSubject);
+        if (!active) return;
+        setChapters(chapterList);
       } catch (err) {
-        if (active) {
-          setError(
-            err instanceof ApiError
-              ? err.message
-              : "Could not load the curriculum. Is the backend running?",
-          );
-        }
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Could not load the curriculum.");
       } finally {
         if (active) setLoading(false);
       }
@@ -60,261 +94,172 @@ export default function Curriculum() {
     };
   }, []);
 
-  // Deep link support: /curriculum#chapter-3 opens that chapter.
-  useEffect(() => {
-    const hash = location.hash.replace("#chapter-", "");
-    const id = Number(hash);
-    if (id) {
-      setExpanded(id);
-      document.getElementById(`chapter-${id}`)?.scrollIntoView({ behavior: "smooth" });
+  const stats = useMemo(() => {
+    const map = new Map<number, ChapterStat>();
+    for (const attempt of progress?.quiz_attempts_list ?? []) {
+      const current = map.get(attempt.chapter_id) ?? { best: 0, total: attempt.total, attempts: 0 };
+      const ratio = attempt.total ? attempt.score / attempt.total : 0;
+      const bestRatio = current.total ? current.best / current.total : 0;
+      map.set(attempt.chapter_id, {
+        best: ratio > bestRatio ? attempt.score : current.best,
+        total: attempt.total,
+        attempts: current.attempts + 1,
+      });
     }
-  }, [location.hash, chapters]);
+    return map;
+  }, [progress]);
 
-  async function chooseClass(id: number) {
-    setClassId(id);
-    setError(null);
-    try {
-      const subjectList = await api.subjects(id);
-      setSubjects(subjectList);
-      setChapters([]);
-      setExpanded(null);
-      if (subjectList.length) {
-        setSubjectId(subjectList[0].id);
-        setChapters(await api.chapters(subjectList[0].id));
-      } else {
-        setSubjectId(null);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load subjects.");
-    }
+  const categoryLabel = (key: string): string => {
+    const found = categories.find((c) => c.key === key);
+    if (found) return lang === "kn" ? found.label_kn : found.label_en;
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  };
+
+  const grouped = useMemo(() => {
+    const keys = Array.from(new Set(chapters.map((c) => c.category)));
+    keys.sort((a, b) => {
+      const ai = CATEGORY_ORDER.indexOf(a);
+      const bi = CATEGORY_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    return keys.map((key) => ({
+      key,
+      chapters: chapters.filter((c) => c.category === key),
+    }));
+  }, [chapters]);
+
+  if (loading) {
+    return (
+      <div className="container">
+        <div className="loader">
+          <div className="spinner" />
+          <span>{t("common.loading")}</span>
+        </div>
+      </div>
+    );
   }
-
-  async function chooseSubject(id: number) {
-    setSubjectId(id);
-    setExpanded(null);
-    setError(null);
-    try {
-      setChapters(await api.chapters(id));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load chapters.");
-    }
-  }
-
-  async function toggleChapter(chapter: Chapter) {
-    if (expanded === chapter.id) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(chapter.id);
-    if (!topics[chapter.id]) {
-      try {
-        const list = await api.topics(chapter.id);
-        setTopics((current) => ({ ...current, [chapter.id]: list }));
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : "Could not load topics.");
-      }
-    }
-  }
-
-  async function loadLessons(topic: Topic) {
-    if (lessons[topic.id]) return;
-    try {
-      const list = await api.lessons(topic.id);
-      setLessons((current) => ({ ...current, [topic.id]: list }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not load lessons.");
-    }
-  }
-
-  const currentSubject = subjects.find((subject) => subject.id === subjectId) ?? null;
 
   return (
-    <div className="container stack">
-      <div className="row-between">
-        <div>
-          <span className="eyebrow">Curriculum</span>
-          <h1 style={{ fontSize: "1.9rem", marginBottom: "0.2rem" }}>
-            {currentSubject?.title_kn ?? "ವಿಜ್ಞಾನ"}{" "}
-            <span className="muted" style={{ fontSize: "1rem" }}>
-              {currentSubject?.title_en ?? "Science"}
-            </span>
-          </h1>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            Karnataka State Board · Class 8 · pick a chapter to read the lesson and take the quiz.
-          </p>
-        </div>
-        <Link className="btn btn-ghost" to="/tutor">
-          ✦ Ask the tutor
-        </Link>
-      </div>
+    <div className="container curriculum-page">
+      <header className="page-head">
+        <p className="eyebrow">{t("curriculum.eyebrow")}</p>
+        <h1>{t("curriculum.title")}</h1>
+        <p className="muted page-sub">{t("curriculum.subtitle")}</p>
+      </header>
 
       {error ? (
         <div className="alert alert-danger" role="alert">
-          {error}
+          <strong>{t("common.retry")}</strong>
+          <p style={{ margin: "0.35rem 0 0" }}>{error}</p>
         </div>
       ) : null}
 
-      <div className="card card-tight row" style={{ gap: "0.8rem" }}>
-        <div className="field" style={{ minWidth: 190 }}>
-          <label className="label" htmlFor="class-select">
-            Class
-          </label>
-          <select
-            id="class-select"
-            className="select"
-            value={classId ?? ""}
-            onChange={(event) => chooseClass(Number(event.target.value))}
-          >
-            {classes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ minWidth: 190 }}>
-          <label className="label" htmlFor="subject-select">
-            Subject
-          </label>
-          <select
-            id="subject-select"
-            className="select"
-            value={subjectId ?? ""}
-            onChange={(event) => chooseSubject(Number(event.target.value))}
-          >
-            {subjects.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title_kn} ({item.title_en})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="spacer" />
-        <span className="badge">{chapters.length} chapters</span>
-      </div>
-
-      {loading ? (
-        <div className="loader">
-          <div className="spinner" />
-          <span>Loading chapters…</span>
+      {!chapters.length && !error ? (
+        <div className="card empty-state">
+          <span className="empty-icon" aria-hidden="true">
+            📚
+          </span>
+          <p>{t("curriculum.empty")}</p>
         </div>
       ) : null}
 
-      {!loading && !chapters.length ? (
-        <div className="card">
-          <h3>No chapters yet</h3>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            Run <code>python -m app.curriculum.cli</code> in the backend folder to seed the
-            Class 8 Science curriculum.
-          </p>
-        </div>
-      ) : null}
-
-      <div className="stack">
-        {chapters.map((chapter) => {
-          const chapterTopics = topics[chapter.id];
-          return (
-            <article className="chapter-card" key={chapter.id} id={`chapter-${chapter.id}`}>
-              <div className="row-between">
-                <div className="row">
-                  <span className="chapter-number">{chapter.number}</span>
-                  <div>
-                    <h3 style={{ marginBottom: "0.1rem" }} className="kan">
-                      {chapter.title_kn}
-                    </h3>
-                    <small>
-                      {chapter.title_en} · {chapter.estimated_minutes} min
-                    </small>
-                  </div>
-                </div>
-                <div className="row" style={{ gap: "0.45rem" }}>
-                  {chapter.is_sample ? <span className="badge badge-warn">Sample content</span> : null}
-                  <button
-                    type="button"
-                    className="btn btn-soft btn-sm"
-                    onClick={() => toggleChapter(chapter)}
+      {grouped.map((group) => {
+        const theme = CATEGORY_THEME[group.key] ?? CATEGORY_THEME.enrichment;
+        return (
+          <section key={group.key} className="category-block" aria-labelledby={`cat-${group.key}`}>
+            <div className="category-head">
+              <span className="category-chip" style={{ background: theme.accent }}>
+                <span aria-hidden="true">{theme.icon}</span> {categoryLabel(group.key)}
+              </span>
+              <span className="muted" style={{ fontSize: "0.8rem" }}>
+                {group.chapters.length} {t("common.chapters")}
+              </span>
+            </div>
+            <div className="chapter-grid">
+              {group.chapters.map((chapter) => {
+                const stat = stats.get(chapter.id);
+                const percent = stat && stat.total ? Math.round((stat.best / stat.total) * 100) : 0;
+                const title = pick(lang, chapter.title_en, chapter.title_kn);
+                const summary = pick(lang, chapter.summary_en, chapter.summary_kn);
+                const statusLabel = !stat
+                  ? t("curriculum.notStarted")
+                  : percent >= 80
+                    ? t("curriculum.review")
+                    : t("curriculum.continue");
+                return (
+                  <article
+                    key={chapter.id}
+                    className="chapter-card"
+                    style={{ ["--accent" as string]: theme.accent }}
                   >
-                    {expanded === chapter.id ? "Hide topics" : "View topics"}
-                  </button>
-                  <Link className="btn btn-primary btn-sm" to={`/quiz/${chapter.id}`}>
-                    Quiz
-                  </Link>
-                </div>
-              </div>
-
-              {chapter.summary_kn ? (
-                <p className="muted kan" style={{ marginBottom: 0, fontSize: "0.92rem" }}>
-                  {chapter.summary_kn}
-                </p>
-              ) : null}
-
-              {expanded === chapter.id ? (
-                <div>
-                  {!chapterTopics ? (
-                    <small className="muted">Loading topics…</small>
-                  ) : (
-                    chapterTopics.map((topic) => (
-                      <div key={topic.id}>
-                        <div className="topic-row">
-                          <span className="dot" aria-hidden="true" />
-                          <div style={{ flex: 1, minWidth: 160 }}>
-                            <strong className="kan">{topic.title_kn}</strong>
-                            <div>
-                              <small>{topic.title_en}</small>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => loadLessons(topic)}
-                          >
-                            Show lessons
-                          </button>
-                        </div>
-                        {lessons[topic.id] ? (
-                          <div style={{ paddingLeft: "1.4rem", paddingBottom: "0.5rem" }}>
-                            {lessons[topic.id].length === 0 ? (
-                              <small className="muted">No lesson written for this topic yet.</small>
-                            ) : (
-                              lessons[topic.id].map((lesson) => (
-                                <div className="row" key={lesson.id} style={{ padding: "0.25rem 0" }}>
-                                  <Link
-                                    className="btn btn-soft btn-sm"
-                                    to={`/lesson/${lesson.id}`}
-                                    state={{
-                                      chapterId: chapter.id,
-                                      chapterTitle: chapter.title_kn,
-                                      topicId: topic.id,
-                                      topicTitle: topic.title_kn,
-                                    }}
-                                  >
-                                    Read lesson →
-                                  </Link>
-                                  <small className="muted">
-                                    {lesson.example_kn ? "Includes an everyday example" : "Key terms included"}
-                                  </small>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        ) : null}
+                    <div className="chapter-card-top">
+                      <span className="chapter-art" aria-hidden="true">
+                        {chapterIcon(chapter)}
+                      </span>
+                      <div className="chapter-badges">
+                        <span className="badge badge-soft">
+                          {chapter.is_enrichment ? t("curriculum.enrichment") : categoryLabel(group.key)}
+                        </span>
+                        <span className="badge badge-muted">#{chapter.number}</span>
                       </div>
-                    ))
-                  )}
-                  <div className="row" style={{ marginTop: "0.6rem" }}>
-                    <Link
-                      className="btn btn-ghost btn-sm"
-                      to={`/tutor?chapter=${chapter.id}&title=${encodeURIComponent(chapter.title_kn)}`}
+                    </div>
+
+                    <h3 className="chapter-title">{title}</h3>
+                    {summary ? <p className="chapter-summary">{summary}</p> : null}
+
+                    <div className="chapter-meta">
+                      <span>
+                        {chapter.estimated_minutes} {t("common.minutes")}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>{statusLabel}</span>
+                      {stat ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>
+                            {t("curriculum.bestScore")} {stat.best}/{stat.total}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div
+                      className="progress-track"
+                      role="progressbar"
+                      aria-valuenow={percent}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={t("curriculum.progress")}
                     >
-                      Ask the tutor about this chapter
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+                      <div className="progress-fill" style={{ width: `${percent}%` }} />
+                    </div>
+
+                    <div className="chapter-actions">
+                      <Link className="btn btn-primary btn-sm" to={`/chapter/${chapter.id}`}>
+                        {stat ? t("curriculum.continue") : t("curriculum.start")}
+                      </Link>
+                      <Link className="btn btn-ghost btn-sm" to={`/quiz/${chapter.id}`}>
+                        {t("curriculum.quiz")}
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      {grouped.some((g) => g.key === "enrichment") ? (
+        <p className="muted enrichment-note">{t("curriculum.enrichmentNote")}</p>
+      ) : null}
+
+      {subjectId ? (
+        <p className="muted" style={{ fontSize: "0.78rem" }}>
+          {t("chapter.sourceNote")}: Karnataka State Board · Class 8 Science · original WonderNest
+          explanations written for this edition. Not a reproduction of textbook pages.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 
 import { useAuth } from "./lib/auth";
+import { LanguageProvider, useLanguage } from "./lib/i18n";
+import Chapter from "./pages/Chapter";
 import Curriculum from "./pages/Curriculum";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
@@ -32,8 +34,33 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function LanguageToggle() {
+  const { lang, setLang } = useLanguage();
+  return (
+    <div className="segmented segmented-lang" role="group" aria-label="Language">
+      <button
+        type="button"
+        className={lang === "en" ? "segmented-item active" : "segmented-item"}
+        onClick={() => setLang("en")}
+        aria-pressed={lang === "en"}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        className={lang === "kn" ? "segmented-item active" : "segmented-item"}
+        onClick={() => setLang("kn")}
+        aria-pressed={lang === "kn"}
+      >
+        ಕನ್ನಡ
+      </button>
+    </div>
+  );
+}
+
 function Shell() {
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const initials = (user?.display_name ?? "W").trim().slice(0, 1).toUpperCase();
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -51,27 +78,26 @@ function Shell() {
           </Link>
           <nav className="nav-links" aria-label="Main">
             <NavLink to="/dashboard" className={navClass}>
-              Dashboard
+              {t("nav.dashboard")}
             </NavLink>
             <NavLink to="/curriculum" className={navClass}>
-              Curriculum
+              {t("nav.curriculum")}
             </NavLink>
             <NavLink to="/tutor" className={navClass}>
-              AI Tutor
+              {t("nav.tutor")}
             </NavLink>
             <NavLink to="/progress" className={navClass}>
-              Progress
+              {t("nav.progress")}
             </NavLink>
           </nav>
           <div className="nav-user">
+            <LanguageToggle />
             <span className="avatar" aria-hidden="true">
               {initials}
             </span>
-            <span className="muted" style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-              {user?.display_name}
-            </span>
+            <span className="muted nav-user-name">{user?.display_name}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={logout}>
-              Log out
+              {t("nav.logout")}
             </button>
           </div>
         </div>
@@ -93,25 +119,28 @@ function Shell() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route
-        element={
-          <RequireAuth>
-            <Shell />
-          </RequireAuth>
-        }
-      >
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/curriculum" element={<Curriculum />} />
-        <Route path="/lesson/:lessonId" element={<LessonPage />} />
-        <Route path="/quiz/:chapterId" element={<QuizPage />} />
-        <Route path="/results/:attemptId" element={<Results />} />
-        <Route path="/progress" element={<ProgressPage />} />
-        <Route path="/tutor" element={<Tutor />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <LanguageProvider>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route
+          element={
+            <RequireAuth>
+              <Shell />
+            </RequireAuth>
+          }
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/curriculum" element={<Curriculum />} />
+          <Route path="/chapter/:chapterId" element={<Chapter />} />
+          <Route path="/lesson/:lessonId" element={<LessonPage />} />
+          <Route path="/quiz/:chapterId" element={<QuizPage />} />
+          <Route path="/results/:attemptId" element={<Results />} />
+          <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/tutor" element={<Tutor />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </LanguageProvider>
   );
 }
