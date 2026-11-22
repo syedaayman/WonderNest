@@ -9,8 +9,8 @@ from app.curriculum.seed import seed_curriculum
 BASE = "/api/curriculum"
 TEST_DB = Path(__file__).resolve().parents[1] / "data" / "test_wondernest.db"
 DEMO_PASSWORD = "Demo@12345"
-EXPECTED_OBJECTIVES = 12
-EXPECTED_TOPICS = 6
+EXPECTED_OBJECTIVES = 54
+EXPECTED_TOPICS = 27
 OBJECTIVES_PER_LESSON = 2
 
 

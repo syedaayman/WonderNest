@@ -43,7 +43,7 @@ def test_hierarchy_walk_and_relationships(client, demo_token):
     assert subject["class_id"] == class_8["id"]
 
     chapters = _get_ok(client, demo_token, f"{BASE}/subjects/{subject['id']}/chapters")
-    assert len(chapters) == 3
+    assert len(chapters) == 9
     numbers = [chapter["number"] for chapter in chapters]
     assert numbers == sorted(numbers)
 
@@ -51,7 +51,7 @@ def test_hierarchy_walk_and_relationships(client, demo_token):
         assert chapter["subject_id"] == subject["id"]
 
         topics = _get_ok(client, demo_token, f"{BASE}/chapters/{chapter['id']}/topics")
-        assert len(topics) >= 2
+        assert len(topics) == 3
 
         for topic in topics:
             assert topic["chapter_id"] == chapter["id"]
