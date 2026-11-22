@@ -104,9 +104,7 @@ export default function Login() {
 
         <div className="alert" style={{ marginTop: "1rem" }}>
           <strong>Demo student:</strong> username <code>demo_student</code>, password
-          <code> Demo@12345</code> (unless your backend sets a different{" "}
-          <code>DEMO_PASSWORD</code>). Create it once by running{" "}
-          <code>python -m app.curriculum.cli</code> in the backend folder.
+          <code> Demo@12345</code>
           <button
             type="button"
             className="btn btn-soft btn-sm"
