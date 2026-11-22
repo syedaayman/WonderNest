@@ -14,4 +14,6 @@ anyio==4.14.2
 email-validator==2.4.0
 
 # Google Gemini SDK for the AI tutor (the key is read from GEMINI_API_KEY only).
-google-genai==3
+# Pinned to an exact version: a major-only pin ("==3") is not resolvable by
+# dependency scanners and lets builds drift between revisions.
+google-genai==3.6.1
