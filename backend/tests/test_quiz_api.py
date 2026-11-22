@@ -1,10 +1,14 @@
-"""Quiz and lesson-progress tests: auth, answer privacy, scoring and ownership."""
+"""Quiz and lesson-progress tests: auth, answer privacy, scoring and ownership.
+
+These tests share one migrated SQLite database, so anything they write is removed again in a
+``finally`` block to keep the other suites' isolation assertions meaningful.
+"""
 
 import pytest
 from sqlalchemy import delete, select
 
 from app.core.database import SessionLocal
-from app.models import Chapter, Lesson, PracticeQuestion, QuizAttempt
+from app.models import Lesson, LessonProgress, PracticeQuestion, QuizAttempt
 
 BASE = "/api/quiz"
 STUDENTS = "/api/students"
@@ -39,11 +43,44 @@ def _answer_key(chapter_id: int) -> dict[int, int]:
     return {row.id: row.correct_index for row in rows}
 
 
+def _last_lesson_id() -> int:
+    db = SessionLocal()
+    try:
+        lesson_id = db.scalar(select(Lesson.id).order_by(Lesson.id.desc()).limit(1))
+    finally:
+        db.close()
+    assert lesson_id is not None, "seed data must contain lessons"
+    return lesson_id
+
+
+def _drop_progress(user_id: int, lesson_id: int) -> None:
+    db = SessionLocal()
+    try:
+        db.execute(
+            delete(LessonProgress).where(
+                LessonProgress.user_id == user_id,
+                LessonProgress.lesson_id == lesson_id,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _drop_attempt(attempt_id: int) -> None:
+    db = SessionLocal()
+    try:
+        db.execute(delete(QuizAttempt).where(QuizAttempt.id == attempt_id))
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_quiz_requires_authentication(client):
     assert client.get(f"{BASE}/chapters/1").status_code == 401
 
 
-def test_quiz_denied_for_teacher(client, token_for):
+def test_quiz_denied_for_teacher(client, token_for, isolation_users):
     resp = client.get(f"{BASE}/chapters/1", headers=_auth(token_for("iso_teacher")))
     assert resp.status_code == 403
 
@@ -74,15 +111,18 @@ def test_submitting_all_correct_answers_scores_full_marks(client, demo_token):
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["score"] == body["total"] == len(key)
-    assert body["chapter_id"] == chapter_id
-    assert all(answer["is_correct"] for answer in body["answers"])
-    assert body["attempt_id"] > 0
+    try:
+        assert body["score"] == body["total"] == len(key)
+        assert body["chapter_id"] == chapter_id
+        assert all(answer["is_correct"] for answer in body["answers"])
+        assert body["attempt_id"] > 0
 
-    # The stored result can be read back by its owner.
-    again = client.get(f"{BASE}/attempts/{body['attempt_id']}", headers=_auth(demo_token))
-    assert again.status_code == 200, again.text
-    assert again.json()["score"] == body["score"]
+        # The stored result can be read back by its owner.
+        again = client.get(f"{BASE}/attempts/{body['attempt_id']}", headers=_auth(demo_token))
+        assert again.status_code == 200, again.text
+        assert again.json()["score"] == body["score"]
+    finally:
+        _drop_attempt(body["attempt_id"])
 
 
 def test_wrong_answers_score_zero_and_reveal_explanations(client, demo_token):
@@ -99,15 +139,11 @@ def test_wrong_answers_score_zero_and_reveal_explanations(client, demo_token):
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["score"] == 0
-    assert all(not answer["is_correct"] for answer in body["answers"])
-
-    db = SessionLocal()
     try:
-        db.execute(delete(QuizAttempt).where(QuizAttempt.id == body["attempt_id"]))
-        db.commit()
+        assert body["score"] == 0
+        assert all(not answer["is_correct"] for answer in body["answers"])
     finally:
-        db.close()
+        _drop_attempt(body["attempt_id"])
 
 
 def test_answer_for_foreign_question_is_rejected(client, demo_token):
@@ -120,7 +156,7 @@ def test_answer_for_foreign_question_is_rejected(client, demo_token):
     assert resp.status_code == 400, resp.text
 
 
-def test_attempt_is_private_to_its_owner(client, demo_token, token_for):
+def test_attempt_is_private_to_its_owner(client, demo_token, token_for, isolation_users):
     chapter_id = _chapter_with_questions()
     key = _answer_key(chapter_id)
     created = client.post(
@@ -129,56 +165,66 @@ def test_attempt_is_private_to_its_owner(client, demo_token, token_for):
         json={"answers": [{"question_id": q, "selected_index": i} for q, i in key.items()]},
     )
     attempt_id = created.json()["attempt_id"]
-
-    other = client.get(f"{BASE}/attempts/{attempt_id}", headers=_auth(token_for("iso_student")))
-    assert other.status_code == 404, other.text
+    try:
+        other = client.get(
+            f"{BASE}/attempts/{attempt_id}", headers=_auth(token_for("iso_student_b"))
+        )
+        assert other.status_code == 404, other.text
+    finally:
+        _drop_attempt(attempt_id)
 
 
 def test_unknown_chapter_returns_404(client, demo_token):
     assert client.get(f"{BASE}/chapters/999999", headers=_auth(demo_token)).status_code == 404
 
 
-def test_lesson_progress_is_recorded_for_the_token_owner(client, demo_token):
-    db = SessionLocal()
+def test_lesson_progress_is_recorded_for_the_token_owner(
+    client, token_for, isolation_users
+):
+    student_id = isolation_users["iso_student_b"]
+    lesson_id = _last_lesson_id()
+    token = token_for("iso_student_b")
     try:
-        lesson_id = db.scalar(select(Lesson.id).order_by(Lesson.id).limit(1))
-        chapter_title = db.scalar(select(Chapter.title_en).order_by(Chapter.id).limit(1))
+        resp = client.post(
+            f"{STUDENTS}/lessons/{lesson_id}/progress",
+            headers=_auth(token),
+            json={"status": "completed", "time_spent_seconds": 120},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["lesson_id"] == lesson_id
+        assert body["status"] == "completed"
+
+        progress = client.get(f"{STUDENTS}/progress", headers=_auth(token))
+        assert progress.status_code == 200, progress.text
+        payload = progress.json()
+        assert payload["lessons_completed"] >= 1
+        lesson_ids = {row["lesson_id"] for row in payload["lesson_progress"]}
+        assert lesson_id in lesson_ids
     finally:
-        db.close()
-    assert lesson_id is not None and chapter_title
-
-    resp = client.post(
-        f"{STUDENTS}/lessons/{lesson_id}/progress",
-        headers=_auth(demo_token),
-        json={"status": "completed", "time_spent_seconds": 120},
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["lesson_id"] == lesson_id
-    assert body["status"] == "completed"
-
-    progress = client.get(f"{STUDENTS}/progress", headers=_auth(demo_token))
-    assert progress.status_code == 200, progress.text
-    payload = progress.json()
-    assert payload["lessons_completed"] >= 1
-    lesson_ids = {row["lesson_id"] for row in payload["lessons"]}
-    assert lesson_id in lesson_ids
+        _drop_progress(student_id, lesson_id)
 
 
 def test_lesson_progress_requires_authentication(client):
-    assert client.post(f"{STUDENTS}/lessons/1/progress", json={"status": "opened"}).status_code == 401
+    assert (
+        client.post(f"{STUDENTS}/lessons/1/progress", json={"status": "opened"}).status_code
+        == 401
+    )
 
 
 @pytest.mark.parametrize("status_value", ["opened", "completed"])
-def test_lesson_progress_accepts_both_statuses(client, demo_token, status_value):
-    db = SessionLocal()
+def test_lesson_progress_accepts_both_statuses(
+    client, token_for, isolation_users, status_value
+):
+    student_id = isolation_users["iso_student_a"]
+    lesson_id = _last_lesson_id()
+    token = token_for("iso_student_a")
     try:
-        lesson_id = db.scalar(select(Lesson.id).order_by(Lesson.id).limit(1))
+        resp = client.post(
+            f"{STUDENTS}/lessons/{lesson_id}/progress",
+            headers=_auth(token),
+            json={"status": status_value},
+        )
+        assert resp.status_code == 200, resp.text
     finally:
-        db.close()
-    resp = client.post(
-        f"{STUDENTS}/lessons/{lesson_id}/progress",
-        headers=_auth(demo_token),
-        json={"status": status_value},
-    )
-    assert resp.status_code == 200, resp.text
+        _drop_progress(student_id, lesson_id)
