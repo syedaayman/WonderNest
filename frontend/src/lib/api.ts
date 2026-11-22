@@ -296,6 +296,54 @@ export interface TranscribeResponse {
   model: string;
 }
 
+export interface NarrationStatus {
+  available: boolean;
+  model: string | null;
+  reason: string | null;
+  detail: string | null;
+}
+
+export interface NarrationAudio {
+  audio_base64: string;
+  mime_type: string;
+  model: string;
+  voice: string | null;
+  language: string;
+  cached: boolean;
+}
+
+export interface ExamQuestion {
+  id: string;
+  type: string;
+  marks: number;
+  difficulty: number;
+  question_en: string;
+  question_kn: string;
+  answer_en: string;
+  answer_kn: string;
+  explanation_en: string;
+  explanation_kn: string;
+  options_en: string[];
+  options_kn: string[];
+  correct_index: number | null;
+}
+
+export interface ExamTypeCount {
+  key: string;
+  label_en: string;
+  label_kn: string;
+  count: number;
+}
+
+export interface ExamQuestions {
+  chapter_id: number;
+  chapter_number: number;
+  source_note: string;
+  total: number;
+  types: ExamTypeCount[];
+  questions: ExamQuestion[];
+}
+
 export interface TutorStatus {
   configured: boolean;
   provider: string;
@@ -391,4 +439,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  narrationStatus: () => request<NarrationStatus>("/api/narration/status"),
+  narrationSpeak: (text: string, language: "kn" | "en") =>
+    request<NarrationAudio>("/api/narration/speak", {
+      method: "POST",
+      body: JSON.stringify({ text, language }),
+    }),
+  chapterExam: (chapterId: number, type?: string) =>
+    request<ExamQuestions>(
+      `/api/curriculum/chapters/${chapterId}/exam${type ? `?type=${encodeURIComponent(type)}` : ""}`,
+    ),
 };
