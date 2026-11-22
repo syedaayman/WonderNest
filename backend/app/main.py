@@ -14,6 +14,7 @@ from app.api.auth import router as auth_router
 from app.api.curriculum import router as curriculum_router
 from app.api.quiz import router as quiz_router
 from app.api.students import router as students_router
+from app.api.voice import router as voice_router
 from app.core.config import get_settings
 
 logger = logging.getLogger("wondernest")
@@ -35,6 +36,7 @@ app.include_router(students_router)
 app.include_router(curriculum_router)
 app.include_router(quiz_router)
 app.include_router(ai_tutor_router)
+app.include_router(voice_router)
 
 # Built single-page app, served by the same FastAPI process so the browser never needs a
 # separate origin (and never sees any backend secret).
