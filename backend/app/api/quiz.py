@@ -54,13 +54,16 @@ def get_chapter_quiz(
         chapter_id=chapter.id,
         chapter_title_kn=chapter.title_kn,
         chapter_title_en=chapter.title_en,
+        category=chapter.category,
         total=len(questions),
         questions=[
             QuizQuestionOut(
                 id=question.id,
                 question_type=question.question_type,
                 question_kn=question.question_kn,
+                question_en=question.question_en,
                 options_kn=list(question.options_kn or []),
+                options_en=list(question.options_en or []),
                 difficulty=question.difficulty,
             )
             for question in questions
@@ -82,7 +85,11 @@ def _result_payload(
             correct_index=question.correct_index,
             is_correct=selected.get(question.id) == question.correct_index,
             explanation_kn=question.explanation_kn,
+            explanation_en=question.explanation_en,
             question_kn=question.question_kn,
+            question_en=question.question_en,
+            options_kn=list(question.options_kn or []),
+            options_en=list(question.options_en or []),
         )
         for question in questions
     ]
