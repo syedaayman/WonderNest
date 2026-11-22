@@ -109,9 +109,9 @@ def list_categories() -> list[CategoryOut]:
     """The subject groupings the curriculum page renders, in display order."""
     return [
         CategoryOut(
-            key=category["key"],
-            label_en=category["label_en"],
-            label_kn=category["label_kn"],
+            key=category["code"],
+            label_en=category["title_en"],
+            label_kn=category["title_kn"],
         )
         for category in curriculum_units.CATEGORIES
     ]
