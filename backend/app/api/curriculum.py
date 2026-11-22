@@ -105,7 +105,9 @@ def list_subjects(
 
 
 @router.get("/categories", response_model=list[CategoryOut])
-def list_categories() -> list[CategoryOut]:
+def list_categories(
+    _user: User = Depends(get_current_user),
+) -> list[CategoryOut]:
     """The subject groupings the curriculum page renders, in display order."""
     return [
         CategoryOut(
