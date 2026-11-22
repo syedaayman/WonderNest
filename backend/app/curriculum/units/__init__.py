@@ -32,6 +32,7 @@ Shape of a unit dict::
 from app.curriculum.units.biology import UNITS as _BIOLOGY
 from app.curriculum.units.chemistry import UNITS as _CHEMISTRY
 from app.curriculum.units.enrichment import UNITS as _ENRICHMENT
+from app.curriculum.units.human_body import UNITS as _HUMAN_BODY
 from app.curriculum.units.physics import UNITS as _PHYSICS
 
 SOURCE_NOTE = (
@@ -71,7 +72,7 @@ CATEGORIES: tuple[dict[str, str], ...] = (
     },
 )
 
-UNITS: tuple[dict, ...] = (*_BIOLOGY, *_PHYSICS, *_CHEMISTRY, *_ENRICHMENT)
+UNITS: tuple[dict, ...] = (*_BIOLOGY, *_PHYSICS, *_CHEMISTRY, *_ENRICHMENT, *_HUMAN_BODY)
 
 BY_NUMBER: dict[int, dict] = {unit["number"]: unit for unit in UNITS}
 
