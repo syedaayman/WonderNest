@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.ai_tutor import router as ai_tutor_router
 from app.api.auth import router as auth_router
 from app.api.curriculum import router as curriculum_router
+from app.api.narration import router as narration_router
 from app.api.quiz import router as quiz_router
 from app.api.students import router as students_router
 from app.api.voice import router as voice_router
@@ -37,6 +38,7 @@ app.include_router(curriculum_router)
 app.include_router(quiz_router)
 app.include_router(ai_tutor_router)
 app.include_router(voice_router)
+app.include_router(narration_router)
 
 # Built single-page app, served by the same FastAPI process so the browser never needs a
 # separate origin (and never sees any backend secret).
