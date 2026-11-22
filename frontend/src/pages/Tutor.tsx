@@ -11,6 +11,7 @@ import {
   type TutorStatus,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useLanguage } from "../lib/i18n";
 
 interface ChatMessage {
   id: string;
@@ -31,8 +32,21 @@ function timeLabel(date: Date): string {
   return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the recording."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function Tutor() {
   const { user } = useAuth();
+  const { lang, t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const chapterParam = searchParams.get("chapter");
@@ -43,7 +57,7 @@ export default function Tutor() {
 
   const [status, setStatus] = useState<TutorStatus | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedPrompt[]>([]);
-  const [language, setLanguage] = useState<TutorLanguage>("kn");
+  const [language, setLanguage] = useState<TutorLanguage>(lang);
   const [level, setLevel] = useState<TutorLevel>("class8");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(initialQuestion);
@@ -54,12 +68,25 @@ export default function Tutor() {
   const [conversationId, setConversationId] = useState<number | undefined>(undefined);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+
   const endRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cancelledRef = useRef(false);
 
   const hasContext = Boolean(chapterParam || topicParam || lessonParam);
   const maxChars = status?.max_message_chars ?? 1200;
   const configured = status?.configured ?? false;
+
+  useEffect(() => {
+    setLanguage(lang);
+  }, [lang]);
 
   useEffect(() => {
     let active = true;
@@ -89,7 +116,19 @@ export default function Tutor() {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, sending]);
+  }, [messages, sending, transcribing]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const timer = window.setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [recording]);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   async function send(rawText: string, overrideLanguage?: TutorLanguage) {
     const text = rawText.trim();
@@ -100,6 +139,7 @@ export default function Tutor() {
     }
 
     setError(null);
+    setMicError(null);
     setMessages((current) => [
       ...current,
       { id: `u-${Date.now()}`, role: "user", text, at: new Date() },
@@ -145,6 +185,7 @@ export default function Tutor() {
     setMessages([]);
     setConversationId(undefined);
     setError(null);
+    setMicError(null);
     textareaRef.current?.focus();
   }
 
@@ -162,6 +203,100 @@ export default function Tutor() {
     setSearchParams({});
   }
 
+  async function startRecording() {
+    setMicError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMicError(t("tutor.micUnsupported"));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+      const mimeType = preferred.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      cancelledRef.current = false;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        void finishRecording(recorder.mimeType || mimeType || "audio/webm");
+      };
+
+      recorder.start();
+      setRecording(true);
+      setRecordSeconds(0);
+    } catch {
+      setMicError(t("tutor.micDenied"));
+      setRecording(false);
+    }
+  }
+
+  async function finishRecording(mimeType: string) {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setRecording(false);
+
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      chunksRef.current = [];
+      return;
+    }
+
+    const blob = new Blob(chunksRef.current, { type: mimeType });
+    chunksRef.current = [];
+    if (blob.size < 1200) {
+      setMicError(t("tutor.micEmpty"));
+      return;
+    }
+
+    setTranscribing(true);
+    try {
+      const audioBase64 = await blobToBase64(blob);
+      const result = await api.transcribeVoice({
+        audio_base64: audioBase64,
+        mime_type: (mimeType.split(";")[0] || "audio/webm").trim(),
+        language,
+      });
+      const spoken = result.text.trim();
+      if (!spoken) {
+        setMicError(t("tutor.micEmpty"));
+      } else {
+        setInput((current) => (current.trim() ? `${current.trim()} ${spoken}` : spoken));
+        textareaRef.current?.focus();
+      }
+    } catch (err) {
+      setMicError(
+        err instanceof ApiError
+          ? err.message
+          : "Voice transcription failed. Please type your question instead.",
+      );
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  function stopRecording() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    if (recorder.state !== "inactive") recorder.stop();
+  }
+
+  function cancelRecording() {
+    cancelledRef.current = true;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    } else {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setRecording(false);
+    }
+  }
+
   return (
     <div className="container tutor-shell">
       <header className="tutor-header card card-tight">
@@ -171,9 +306,9 @@ export default function Tutor() {
               ✦
             </span>
             <div>
-              <h1 style={{ fontSize: "1.25rem", marginBottom: 0 }}>WonderNest AI Tutor</h1>
+              <h1 style={{ fontSize: "1.25rem", marginBottom: 0 }}>{t("tutor.title")}</h1>
               <small className="muted">
-                Powered by Google Gemini
+                {t("tutor.poweredBy")}
                 {status?.model ? ` · ${status.model}` : ""}
                 {configured ? " · live" : ""}
               </small>
@@ -181,7 +316,7 @@ export default function Tutor() {
           </div>
           <div className="row" style={{ gap: "0.5rem" }}>
             <span className={configured ? "badge badge-ok" : "badge badge-warn"}>
-              {configured ? "AI online" : "AI not configured"}
+              {configured ? t("tutor.online") : t("tutor.offline")}
             </span>
             <button
               type="button"
@@ -189,13 +324,13 @@ export default function Tutor() {
               onClick={clearConversation}
               disabled={!messages.length}
             >
-              Clear conversation
+              {t("tutor.clear")}
             </button>
           </div>
         </div>
 
         <div className="tutor-controls">
-          <div className="segmented" role="group" aria-label="Answer language">
+          <div className="segmented" role="group" aria-label={t("common.language")}>
             <button
               type="button"
               className={language === "kn" ? "segmented-item active" : "segmented-item"}
@@ -216,7 +351,7 @@ export default function Tutor() {
 
           <label className="inline-field">
             <span className="label" style={{ marginBottom: 0 }}>
-              Level
+              {t("tutor.level")}
             </span>
             <select
               className="select select-sm"
@@ -234,7 +369,7 @@ export default function Tutor() {
 
           {hasContext ? (
             <span className="badge badge-context">
-              Lesson context: {titleParam ?? "selected chapter"}
+              {t("tutor.context")}: {titleParam ?? "selected chapter"}
               <button
                 type="button"
                 className="badge-clear"
@@ -250,31 +385,28 @@ export default function Tutor() {
 
       {!configured && status ? (
         <div className="alert alert-warn" role="alert">
-          <strong>AI tutor is not configured.</strong>
+          <strong>{t("tutor.offline")}.</strong>
           <p style={{ margin: "0.35rem 0 0" }}>
             The backend is missing a valid <code>GEMINI_API_KEY</code>. Add it to the server
-            environment (Settings → Environment variables) and restart the backend. The tutor
-            never returns placeholder answers, so it stays disabled until the key is present.
+            environment (Settings → Environment variables) and restart the backend. The tutor never
+            returns placeholder answers, so it stays disabled until the key is present.
           </p>
-          <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
-            {status.message}
-          </p>
+          <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>{status.message}</p>
         </div>
       ) : null}
 
-      <div className="chat-log card" ref={undefined}>
+      <div className="chat-log card">
         {messages.length === 0 ? (
           <div className="chat-empty">
             <span className="tutor-avatar large" aria-hidden="true">
               ✦
             </span>
             <h2 style={{ marginBottom: "0.3rem" }}>
-              ನಮಸ್ಕಾರ {user?.display_name ?? "friend"}! Ask me anything about Class 8 Science.
+              {lang === "kn" ? `ನಮಸ್ಕಾರ ${user?.display_name ?? ""}!` : `Hi ${user?.display_name ?? "friend"}!`}{" "}
+              {t("tutor.emptyTitle")}
             </h2>
             <p className="muted" style={{ maxWidth: 520 }}>
-              I explain concepts in Kannada or English, use everyday examples, give hints for quiz
-              questions and ask you questions back. I am an AI study helper — not an official
-              textbook.
+              {t("tutor.emptyBody")}
             </p>
             <div className="chips" style={{ justifyContent: "center" }}>
               {suggestions.map((prompt) => (
@@ -307,7 +439,7 @@ export default function Tutor() {
                     <RichText text={message.text} />
                   </div>
                 ) : (
-                  <p className="msg-text kan" lang="kn">
+                  <p className="msg-text kan" lang={language === "kn" ? "kn" : "en"}>
                     {message.text}
                   </p>
                 )}
@@ -318,7 +450,7 @@ export default function Tutor() {
                       className="link-button"
                       onClick={() => copyMessage(message)}
                     >
-                      {copiedId === message.id ? "Copied ✓" : "Copy"}
+                      {copiedId === message.id ? t("common.copied") : t("common.copy")}
                     </button>
                     {message.latencyMs ? (
                       <span className="muted" style={{ fontSize: "0.72rem" }}>
@@ -332,14 +464,14 @@ export default function Tutor() {
           ))
         )}
 
-        {sending ? (
+        {sending || transcribing ? (
           <div className="msg msg-assistant">
             <div className="msg-bubble">
               <div className="msg-meta">
                 <strong>AI Tutor</strong>
                 <span>{timeLabel(new Date())}</span>
               </div>
-              <div className="typing" aria-label="Tutor is thinking">
+              <div className="typing" aria-label={transcribing ? t("tutor.micTranscribing") : t("tutor.thinking")}>
                 <span />
                 <span />
                 <span />
@@ -353,13 +485,39 @@ export default function Tutor() {
 
       {error ? (
         <div className="alert alert-danger" role="alert">
-          <strong>{error.code === "rate_limited" ? "Slow down a little." : "Tutor error"}</strong>
+          <strong>
+            {error.code === "rate_limited" ? t("tutor.slowDown") : t("tutor.errorTitle")}
+          </strong>
           <p style={{ margin: "0.3rem 0 0" }}>{error.message}</p>
           {error.retryAfter ? (
             <p style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
               Try again in about {error.retryAfter} seconds.
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {micError ? (
+        <div className="alert alert-warn" role="alert">
+          <strong>{t("tutor.micStart")}</strong>
+          <p style={{ margin: "0.3rem 0 0" }}>{micError}</p>
+        </div>
+      ) : null}
+
+      {recording ? (
+        <div className="recording-bar" role="status">
+          <span className="rec-dot" aria-hidden="true" />
+          <span>{t("tutor.micRecording")}</span>
+          <span className="muted">
+            {String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:
+            {String(recordSeconds % 60).padStart(2, "0")}
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={stopRecording}>
+            {t("tutor.micStop")}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={cancelRecording}>
+            {t("tutor.micCancel")}
+          </button>
         </div>
       ) : null}
 
@@ -378,11 +536,7 @@ export default function Tutor() {
           ref={textareaRef}
           className="textarea"
           rows={2}
-          placeholder={
-            language === "kn"
-              ? "ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಇಲ್ಲಿ ಬರೆಯಿರಿ… (ಉದಾ: ದ್ಯುತಿಸಂಶ್ಲೇಷಣೆ ಎಂದರೇನು?)"
-              : "Ask your question here… (e.g. What is friction?)"
-          }
+          placeholder={language === "kn" ? t("tutor.placeholderKn") : t("tutor.placeholderEn")}
           value={input}
           maxLength={maxChars}
           onChange={(event) => setInput(event.target.value)}
@@ -401,18 +555,33 @@ export default function Tutor() {
           <div className="row" style={{ gap: "0.4rem" }}>
             {status ? (
               <span className="muted" style={{ fontSize: "0.76rem" }}>
-                {status.rate_limit_requests} questions / {status.rate_limit_window_seconds}s
+                {status.rate_limit_requests} {t("tutor.rateLimit")} /{" "}
+                {status.rate_limit_window_seconds}s
               </span>
             ) : null}
+            <button
+              type="button"
+              className={recording ? "btn btn-danger btn-sm" : "btn btn-ghost btn-sm mic-btn"}
+              onClick={recording ? stopRecording : startRecording}
+              disabled={sending || transcribing || !configured}
+              aria-label={recording ? t("tutor.micStop") : t("tutor.micStart")}
+              title={recording ? t("tutor.micStop") : t("tutor.micStart")}
+            >
+              {recording ? "■" : "🎙"}{" "}
+              {transcribing ? t("tutor.micTranscribing") : recording ? t("tutor.micStop") : t("tutor.micStart")}
+            </button>
             <button
               type="submit"
               className="btn btn-primary"
               disabled={sending || !configured || !input.trim()}
             >
-              {sending ? "Thinking…" : "Ask tutor"}
+              {sending ? t("tutor.sending") : t("tutor.send")}
             </button>
           </div>
         </div>
+        <p className="muted" style={{ fontSize: "0.74rem", margin: "0.4rem 0 0" }}>
+          {t("tutor.micHint")}
+        </p>
       </form>
 
       {suggestions.length && messages.length ? (
@@ -435,9 +604,7 @@ export default function Tutor() {
       ) : null}
 
       <p className="muted" style={{ fontSize: "0.78rem" }}>
-        Responses are generated by Google Gemini for learning support. They are not official
-        Karnataka State Board material — always check your textbook.{" "}
-        <Link to="/curriculum">Browse curriculum</Link>
+        {t("tutor.footnote")} <Link to="/curriculum">{t("tutor.browse")}</Link>
       </p>
     </div>
   );
