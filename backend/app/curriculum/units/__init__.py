@@ -35,9 +35,9 @@ from app.curriculum.units.enrichment import UNITS as _ENRICHMENT
 from app.curriculum.units.physics import UNITS as _PHYSICS
 
 SOURCE_NOTE = (
-    "WonderNest original study content. Unit titles follow the 2026-27 Karnataka Class 8 "
-    "Science (Curiosity) unit list supplied by the school; explanations, notes, quizzes and "
-    "diagrams are written by WonderNest and are not textbook text."
+    "Not official Karnataka State Board text. WonderNest original study content: unit titles "
+    "follow the 2026-27 Karnataka Class 8 Science (Curiosity) unit list supplied by the school; "
+    "explanations, notes, quizzes and diagrams are written by WonderNest."
 )
 
 CATEGORIES: tuple[dict[str, str], ...] = (

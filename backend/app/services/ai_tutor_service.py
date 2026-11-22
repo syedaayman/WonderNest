@@ -556,3 +556,63 @@ async def generate_tutor_reply(
         len(history or []),
     )
     return TutorReply(text=text, model=model, latency_ms=latency_ms, usage=usage)
+
+
+# --------------------------------------------------------------------------------------
+# Voice input: transcribe a short spoken question
+# --------------------------------------------------------------------------------------
+MAX_AUDIO_BYTES = 6 * 1024 * 1024
+
+_TRANSCRIBE_PROMPT: dict[str, str] = {
+    "kn": (
+        "Transcribe this spoken audio exactly as the student said it, in Kannada. "
+        "Return only the transcribed Kannada text, with no translation, commentary or quotes."
+    ),
+    "en": (
+        "Transcribe this spoken audio exactly as the student said it, in English. "
+        "Return only the transcribed English text, with no commentary or quotes."
+    ),
+}
+
+
+async def transcribe_audio(*, audio: bytes, mime_type: str, language: str) -> tuple[str, str]:
+    """Transcribe a short spoken question with Gemini. Raises ``TutorError`` on failure."""
+    settings = get_settings()
+    api_key = settings.GEMINI_API_KEY.strip()
+    if not api_key:
+        raise AINotConfiguredError()
+    if not audio:
+        raise AIEmptyResponseError("The recording was empty. Please try again.")
+    if len(audio) > MAX_AUDIO_BYTES:
+        raise AIProviderError("That recording is too long. Please keep it under 30 seconds.")
+
+    client = _get_client(api_key)
+    contents = [
+        genai_types.Content(
+            role="user",
+            parts=[
+                genai_types.Part.from_bytes(data=audio, mime_type=mime_type),
+                genai_types.Part.from_text(
+                    text=_TRANSCRIBE_PROMPT.get(language, _TRANSCRIBE_PROMPT["en"])
+                ),
+            ],
+        )
+    ]
+    config = genai_types.GenerateContentConfig(temperature=0.0, max_output_tokens=1024)
+
+    started = time.perf_counter()
+    response, model = await _generate(
+        client,
+        contents,
+        config,
+        timeout_seconds=settings.GEMINI_TIMEOUT_SECONDS + 5,
+    )
+    text = _extract_text(response).strip().strip('"').strip()
+    logger.info(
+        "ai_tutor_transcription model=%s language=%s bytes=%s latency_ms=%s",
+        model,
+        language,
+        len(audio),
+        int((time.perf_counter() - started) * 1000),
+    )
+    return text, model
