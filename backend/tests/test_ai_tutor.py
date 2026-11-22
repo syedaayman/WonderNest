@@ -390,15 +390,16 @@ def test_conversation_history_is_stored_and_replayed(
 
 
 def test_other_students_conversation_is_not_reachable(
-    client, demo_token, token_for, gemini_key, monkeypatch
+    client, demo_token, token_for, isolation_users, gemini_key, monkeypatch
 ):
     _capture_calls(monkeypatch)
     first = client.post(
         f"{BASE}/chat", headers=_auth(demo_token), json={"message": "ಖಾಸಗಿ ಪ್ರಶ್ನೆ"}
     )
+    assert first.status_code == 200, first.text
     conversation_id = first.json()["conversation_id"]
 
-    other = token_for("iso_student")
+    other = token_for("iso_student_b")
     resp = client.post(
         f"{BASE}/chat",
         headers=_auth(other),
