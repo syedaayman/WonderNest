@@ -58,8 +58,8 @@ if FRONTEND_DIST.is_dir():
             "/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets"
         )
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def serve_frontend(full_path: str) -> FileResponse | JSONResponse:
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    def serve_frontend(full_path: str):
         if full_path.startswith("api/"):
             return JSONResponse(status_code=404, content={"detail": "Not found."})
         candidate = (FRONTEND_DIST / full_path).resolve()
@@ -69,7 +69,7 @@ if FRONTEND_DIST.is_dir():
 
 else:
 
-    @app.get("/", include_in_schema=False)
+    @app.get("/", include_in_schema=False, response_model=None)
     def root() -> dict[str, str]:
         return {
             "app": "WonderNest API",
