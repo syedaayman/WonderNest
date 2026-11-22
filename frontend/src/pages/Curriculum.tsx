@@ -166,7 +166,12 @@ export default function Curriculum() {
       {grouped.map((group) => {
         const theme = CATEGORY_THEME[group.key] ?? CATEGORY_THEME.enrichment;
         return (
-          <section key={group.key} className="category-block" aria-labelledby={`cat-${group.key}`}>
+          <section
+          key={group.key}
+          id={`cat-${group.key}`}
+          className="category-block"
+          aria-labelledby={`cat-${group.key}`}
+        >
             <div className="category-head">
               <span className="category-chip" style={{ background: theme.accent }}>
                 <span aria-hidden="true">{theme.icon}</span> {categoryLabel(group.key)}
