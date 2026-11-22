@@ -97,6 +97,7 @@ def _result_payload(
         attempt_id=attempt.id,
         chapter_id=chapter.id,
         chapter_title_kn=chapter.title_kn,
+        chapter_title_en=chapter.title_en,
         score=attempt.score,
         total=attempt.total,
         created_at=attempt.created_at,
